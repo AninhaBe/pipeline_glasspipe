@@ -1,46 +1,47 @@
-# Importa bibliotecas para visualização e leitura dos dados
 import streamlit as st
 import pandas as pd
-import os
+import plotly.express as px
 
-# Título do app
-st.set_page_config(page_title="Reputação de Empresas (Glassdoor)", layout="wide")
-st.title("📊 Reputação de Empresas (Glassdoor)")
-st.markdown("Visualização baseada nos dados raspados e processados do Glassdoor.")
+st.set_page_config(page_title="GlassPipe", layout="wide")
 
-# Caminho da pasta gold onde estão os arquivos .parquet
-pasta_gold = "data/gold"
+st.title("📊 Dashboard - Avaliações de Empresas (GlassPipe)")
 
-# Verifica se os arquivos existem
-arquivo_top10 = os.path.join(pasta_gold, "top10_empresas.parquet")
-arquivo_media = os.path.join(pasta_gold, "media_geral.parquet")
-arquivo_distribuicao = os.path.join(pasta_gold, "distribuicao_notas.parquet")
+# Lê os dados
+df = pd.read_parquet("data/silver/empresas.parquet")
 
-if not all([os.path.exists(arquivo_top10), os.path.exists(arquivo_media), os.path.exists(arquivo_distribuicao)]):
-    st.error("Arquivos da camada gold não encontrados. Execute o pipeline primeiro.")
-else:
-    # Lê os arquivos .parquet
-    df_top10 = pd.read_parquet(arquivo_top10)
-    df_media = pd.read_parquet(arquivo_media)
-    df_distribuicao = pd.read_parquet(arquivo_distribuicao)
+# Limpeza básica
+df["nome"] = df["nome"].astype(str).str.strip()
+df["nota"] = df["nota"].astype(str).str.replace(",", ".").astype(float)
+df["setor"] = df["setor"].astype(str).str.title()
 
-    # Layout em colunas
-    col1, col2 = st.columns(2)
+# Sidebar
+st.sidebar.header("Filtros")
+setores_disponiveis = sorted(df["setor"].unique())
+setor_selecionado = st.sidebar.selectbox("Selecione o setor", ["Todos"] + setores_disponiveis)
 
-    with col1:
-        st.metric(label="Média geral das notas", value=round(df_media['media_geral'].iloc[0], 2))
+# Filtragem
+if setor_selecionado != "Todos":
+    df = df[df["setor"] == setor_selecionado]
 
-    with col2:
-        st.markdown("Empresas analisadas: **{}**".format(len(df_distribuicao)))
+st.markdown(f"### Empresas avaliadas ({len(df)})")
 
-    st.divider()
+st.dataframe(df[["nome", "nota", "setor"]].sort_values(by="nota", ascending=False), use_container_width=True)
 
-    # Gráfico Top 10 empresas
-    st.subheader("Top 10 Empresas com Melhor Avaliação")
-    st.bar_chart(data=df_top10, x="nome", y="nota", use_container_width=True)
+# Gráfico: Top empresas
+top_empresas = df.sort_values(by="nota", ascending=False).head(10)
+fig1 = px.bar(top_empresas, x="nota", y="nome", orientation="h", title="Top 10 Empresas (Nota mais alta)", color="nota")
+fig1.update_layout(yaxis=dict(autorange="reversed"))
+st.plotly_chart(fig1, use_container_width=True)
 
-    st.divider()
+# Gráfico: Média por setor (se todos os setores)
+if setor_selecionado == "Todos":
+    media_setor = df.groupby("setor")["nota"].mean().reset_index().sort_values(by="nota", ascending=False)
+    fig2 = px.bar(media_setor, x="nota", y="setor", orientation="h", title="Média de nota por setor", color="nota")
+    fig2.update_layout(yaxis=dict(autorange="reversed"))
+    st.plotly_chart(fig2, use_container_width=True)
 
-    # Gráfico de distribuição
-    st.subheader("📈 Distribuição de Empresas por Nota")
-    st.bar_chart(data=df_distribuicao, x="nota", y="quantidade", use_container_width=True)
+# Gráfico: Distribuição de notas
+dist_nota = df["nota"].value_counts().sort_index().reset_index()
+dist_nota.columns = ["nota", "quantidade"]
+fig3 = px.bar(dist_nota, x="nota", y="quantidade", title="Distribuição de Empresas por Nota")
+st.plotly_chart(fig3, use_container_width=True)
