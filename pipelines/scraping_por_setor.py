@@ -64,7 +64,7 @@ def scraping_por_setores():
                             })
 
                     except Exception as e:
-                        salvar_log(nome_setor, f"⚠️ Erro ao processar card: {e}")
+                        salvar_log(nome_setor, f"⚠Erro ao processar card: {e}")
                         continue
 
                 try:
