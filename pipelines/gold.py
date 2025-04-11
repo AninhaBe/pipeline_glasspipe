@@ -59,9 +59,9 @@ def processar_gold():
         plt.tight_layout()
         plt.savefig(f"data/gold/evolucao_media_geral_{hoje}.png")
 
-    print("✅ Camada gold gerada com sucesso!")
-    print(f"📁 Arquivos salvos com sufixo: _{hoje}")
+    print("Camada gold gerada com sucesso!")
+    print(f"Arquivos salvos com sufixo: _{hoje}")
 
 if __name__ == "__main__":
-    print("🏅 Processando camada gold...")
+    print("Processando camada gold...")
     processar_gold()
