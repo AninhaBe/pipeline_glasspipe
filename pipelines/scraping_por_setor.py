@@ -1,87 +1,105 @@
-from playwright.sync_api import sync_playwright
-import pandas as pd
-import time
-from datetime import datetime
 import os
+import json
+import time
+import pandas as pd
+from datetime import datetime
+from playwright.sync_api import sync_playwright
 
-# Define uma função que vai raspar os dados de empresas, filtrando por um setor específico
-def scrape_empresas_por_setor(setor_nome):
-    base_url = "https://www.glassdoor.com.br/Avaliações/index.htm"
-    empresas = []
+# Caminho do arquivo JSON com os setores
+CAMINHO_SETORES = "config/setores.json"
+
+# Função para salvar logs
+def salvar_log(nome_setor, mensagem):
+    os.makedirs("logs", exist_ok=True)
+    with open(f"logs/{datetime.today().strftime('%Y-%m-%d')}.log", "a", encoding="utf-8") as f:
+        f.write(f"[{nome_setor}] {mensagem}\n")
+
+# Função principal
+def scraping_por_setores():
+    with open(CAMINHO_SETORES, "r", encoding="utf-8") as f:
+        setores = json.load(f)
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=False)
-        page = browser.new_page()
-        page.goto(base_url)
 
-        # Aguarda o campo de setor aparecer
-        page.wait_for_selector('input[data-test="industries-autocomplete-input"]')
+        for id_setor, info in setores.items():
+            nome_setor = info["nome"]
+            tipo = info["tipo"]
+            print(f"\n🔍 Iniciando scraping para o setor: {nome_setor}")
+            empresas = []
 
-        # Digita o setor e espera as sugestões carregarem
-        input_setor = page.query_selector('input[data-test="industries-autocomplete-input"]')
-        input_setor.fill(setor_nome)
-        time.sleep(2)
+            # Define a URL correta
+            if tipo == "sector":
+                url = f"https://www.glassdoor.com.br/Avaliacoes/index.htm?filterType=RATING_OVERALL&sector={id_setor}&page=1"
+            else:
+                url = f"https://www.glassdoor.com.br/Avaliacoes/index.htm?filterType=RATING_OVERALL&industry={id_setor}&page=1"
 
-        # Pressiona seta pra baixo + Enter pra selecionar o primeiro da lista
-        input_setor.press("ArrowDown")
-        input_setor.press("Enter")
-
-        # Espera a página carregar com os resultados filtrados
-        page.wait_for_timeout(4000)
-
-        while True:
-            cards = page.query_selector_all('div[data-test="employer-card"]')
-            print(f"🔍 Coletando {len(cards)} empresas do setor: {setor_nome}")
-
-            for card in cards:
-                try:
-                    nome_elem = card.query_selector('div[data-test="employer-short-name"]')
-                    nome = nome_elem.inner_text() if nome_elem else None
-
-                    nota_elem = card.query_selector('div[class*="ratingWithText"]')
-                    nota = nota_elem.inner_text().split()[0] if nota_elem else None
-
-                    empresas.append({
-                        "nome": nome,
-                        "nota": nota,
-                        "setor": setor_nome
-                    })
-
-                except Exception as e:
-                    print(f"Erro ao processar card: {e}")
-                    continue
-
-            # Tenta avançar pra próxima página
+            page = browser.new_page()
             try:
-                next_button = page.query_selector('button[data-test="next-page"]')
-                if next_button and next_button.is_enabled():
-                    next_button.click()
-                    page.wait_for_timeout(3000)
-                else:
-                    print("✅ Fim da paginação.")
+                page.goto(url)
+            except Exception as e:
+                salvar_log(nome_setor, f"❌ Falha ao acessar a URL: {e}")
+                page.close()
+                continue
+
+            while True:
+                time.sleep(3)
+                cards = page.query_selector_all('div[data-test="employer-card"]')
+                print(f"🔍 Coletando {len(cards)} empresas do setor: {nome_setor}")
+
+                for card in cards:
+                    try:
+                        nome_elem = card.query_selector('div[data-test="employer-short-name"]')
+                        nota_elem = card.query_selector('div[class*="ratingWithText"]')
+
+                        nome = nome_elem.inner_text() if nome_elem else None
+                        nota = nota_elem.inner_text().split()[0] if nota_elem else None
+
+                        if nome:
+                            empresas.append({
+                                "nome": nome,
+                                "nota": nota,
+                                "setor": nome_setor,
+                                "data_ingestao": datetime.today().strftime('%Y-%m-%d')
+                            })
+
+                    except Exception as e:
+                        salvar_log(nome_setor, f"⚠️ Erro ao processar card: {e}")
+                        continue
+
+                try:
+                    next_button = page.query_selector('button[data-test="next-page"]')
+                    if next_button and next_button.is_enabled():
+                        next_button.click()
+                    else:
+                        break
+                except:
                     break
-            except:
-                print("⛔ Botão 'next-page' não encontrado.")
-                break
+
+            page.close()
+
+            if not empresas:
+                salvar_log(nome_setor, "⚠️ Nenhuma empresa encontrada.")
+                continue
+
+            df = pd.DataFrame(empresas)
+
+            nome_pasta = nome_setor.lower().replace(" ", "_").replace("ç", "c").replace("ã", "a") \
+                                           .replace("á", "a").replace("â", "a").replace("ê", "e") \
+                                           .replace("é", "e").replace("í", "i").replace("ó", "o") \
+                                           .replace("ô", "o").replace("ú", "u").replace("ü", "u") \
+                                           .replace("&", "e")
+
+            pasta_destino = f"data/bronze/setor/{nome_pasta}"
+            os.makedirs(pasta_destino, exist_ok=True)
+
+            df.to_csv(os.path.join(pasta_destino, f"empresas_{datetime.today().strftime('%Y-%m-%d')}.csv"), index=False)
+            df.to_parquet(os.path.join(pasta_destino, f"empresas_{datetime.today().strftime('%Y-%m-%d')}.parquet"), index=False)
+            df.to_json(os.path.join(pasta_destino, f"empresas_{datetime.today().strftime('%Y-%m-%d')}.json"), orient="records", force_ascii=False)
+
+            salvar_log(nome_setor, f"✅ {len(df)} empresas coletadas.")
 
         browser.close()
 
-    # Cria pasta de destino (bronze + nome do setor)
-    data_hoje = datetime.today().strftime('%Y-%m-%d')
-    pasta_destino = f"data/bronze/setor/{setor_nome.lower().replace(' ', '_')}"
-    os.makedirs(pasta_destino, exist_ok=True)
-    caminho_arquivo = os.path.join(pasta_destino, f"empresas_{data_hoje}.csv")
-
-    # Salva os dados
-    df = pd.DataFrame(empresas)
-    df.to_csv(caminho_arquivo, index=False)
-
-    print(df.head())
-    print(f"\n💾 Dados salvos em: {caminho_arquivo}")
-    print(f"📊 Total de empresas coletadas: {len(df)}")
-
-
-# Rodar diretamente
 if __name__ == "__main__":
-    # Teste com 1 setor (você pode mudar esse nome depois)
-    scrape_empresas_por_setor("Tecnologia da informação")
+    scraping_por_setores()
