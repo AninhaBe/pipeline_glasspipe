@@ -38,7 +38,7 @@ def scraping_por_setores():
             try:
                 page.goto(url)
             except Exception as e:
-                salvar_log(nome_setor, f"❌ Falha ao acessar a URL: {e}")
+                salvar_log(nome_setor, f"Falha ao acessar a URL: {e}")
                 page.close()
                 continue
 
@@ -64,7 +64,7 @@ def scraping_por_setores():
                             })
 
                     except Exception as e:
-                        salvar_log(nome_setor, f"⚠️ Erro ao processar card: {e}")
+                        salvar_log(nome_setor, f"⚠Erro ao processar card: {e}")
                         continue
 
                 try:
@@ -79,7 +79,7 @@ def scraping_por_setores():
             page.close()
 
             if not empresas:
-                salvar_log(nome_setor, "⚠️ Nenhuma empresa encontrada.")
+                salvar_log(nome_setor, "Nenhuma empresa encontrada.")
                 continue
 
             df = pd.DataFrame(empresas)
@@ -97,7 +97,7 @@ def scraping_por_setores():
             df.to_parquet(os.path.join(pasta_destino, f"empresas_{datetime.today().strftime('%Y-%m-%d')}.parquet"), index=False)
             df.to_json(os.path.join(pasta_destino, f"empresas_{datetime.today().strftime('%Y-%m-%d')}.json"), orient="records", force_ascii=False)
 
-            salvar_log(nome_setor, f"✅ {len(df)} empresas coletadas.")
+            salvar_log(nome_setor, f"{len(df)} empresas coletadas.")
 
         browser.close()
 
