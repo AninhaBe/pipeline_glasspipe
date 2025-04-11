@@ -37,5 +37,5 @@ os.makedirs("data/silver", exist_ok=True)
 df_final.to_parquet("data/silver/empresas.parquet", index=False)
 
 print(df_final.head())
-print(f"\n✅ Dados salvos com sucesso em: data/silver/empresas.parquet")
-print(f"📊 Total de empresas processadas: {len(df_final)}")
+print(f"\nDados salvos com sucesso em: data/silver/empresas.parquet")
+print(f"Total de empresas processadas: {len(df_final)}")
